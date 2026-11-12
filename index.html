@@ -74,7 +74,8 @@
     <summary>Calculation assumptions</summary>
     <p>Both players start with zero unspent souls and receive the same clan raid rewards. They buy level upgrades as soon as they can afford them.</p>
     <p>The strongest player determines the raid level. One bonus raid is purchased each day, so daily souls = 200 × raid level.</p>
-    <p>Upgrade cost = 150(3L² + L). Maximum beatable raid = 3L − 4 for player level 2 and above.</p>
+    <p>Upgrade cost = 150(3L² + L). Boss HP = 17,500 × p × 3^(ceil(raid / 3)), with special p values of 0.1, 0.3, 0.5, 0.2, 0.4, and 0.6 for Raids 1–6. After that p cycles through 0.3, 0.5, 0.7.</p>
+    <p>Boss fights last 16 seconds at 55 clicks per second, with player damage of 10 × 3^(level − 1) per click. This gives maximum raids of 1 for player Level 1, 3 for Level 2, and 3L − 4 for Level 3 and above.</p>
     <p>This finds the first day the players reach the same level, not when they have exactly the same unspent souls.</p>
   </details>
 </main>
@@ -82,6 +83,33 @@
   // Total souls ever spent to reach player level L from level 1.
   function totalCost(L) {
     return 150 * L * L * (L - 1);
+  }
+
+  // Standard Immortal health. The first six raids have special p values.
+  function raidP(n) {
+    if (n <= 6) return [0.1, 0.3, 0.5, 0.2, 0.4, 0.6][n - 1];
+    return 0.2 * ((n - 1) % 3) + 0.3;
+  }
+
+  function bossHealth(n) {
+    return 17500 * raidP(n) * Math.pow(3, Math.ceil(n / 3));
+  }
+
+  // Logarithms avoid overflow for high-level bosses, whose HP can exceed
+ 
+  function canDefeat(playerLevel, raidLevel) {
+    const logDamage = Math.log(8800) + (playerLevel - 1) * Math.log(3);
+    const logHealth = Math.log(17500 * raidP(raidLevel))
+                    + Math.ceil(raidLevel / 3) * Math.log(3);
+    return logDamage >= logHealth;
+  }
+
+  function maxRaid(playerLevel) {
+    // Starting guess follows the standard 3-level pattern at higher levels.
+    let raid = Math.max(1, 3 * playerLevel - 4);
+    while (canDefeat(playerLevel, raid + 1)) raid++;
+    while (raid > 1 && !canDefeat(playerLevel, raid)) raid--;
+    return raid;
   }
 
   function catchUpTime(player1, player2) {
@@ -93,12 +121,11 @@
     let days = 0;
 
     if (lower === higher) return { days: 0, level: lower };
-    if (higher < 2) throw new Error('At least one player must be able to defeat Raid 1.');
 
     // Jump to the next day that could change either player's level.
-    // This produces the same result as day-by-day updates, but runs faster.
+   
     for (let steps = 0; steps < 1000000; steps++) {
-      const dailySouls = 200 * (3 * higher - 4);
+      const dailySouls = 200 * maxRaid(higher);
       const daysUntilLowerReachesHigher = Math.max(1,
         Math.ceil((totalCost(higher) - lowerStart - earned) / dailySouls));
       const daysUntilHigherLevelsUp = Math.max(1,
@@ -146,7 +173,7 @@
     }
   });
 
-  // Show the default example immediately.
+  
   document.getElementById('form').requestSubmit();
 </script>
 </body>
