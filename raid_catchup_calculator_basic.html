@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Raid Catch-Up Calculator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: white;
+      color: #222;
+      margin: 0;
+      padding: 40px 16px;
+    }
+    main { max-width: 470px; margin: 0 auto; }
+    h1 { font-size: 26px; margin-bottom: 12px; }
+    p { line-height: 1.5; }
+    label { display: block; font-weight: bold; margin: 20px 0 7px; }
+    input {
+      box-sizing: border-box;
+      display: block;
+      width: 100%;
+      padding: 10px;
+      font: inherit;
+      border: 1px solid #999;
+      border-radius: 4px;
+    }
+    button {
+      display: block;
+      width: 100%;
+      margin-top: 22px;
+      padding: 12px;
+      font: inherit;
+      background: #eee;
+      color: #111;
+      border: 1px solid #888;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover { background: #ddd; }
+    button:focus-visible, input:focus-visible { outline: 2px solid #333; outline-offset: 2px; }
+    #result { margin-top: 28px; border-top: 1px solid #ccc; padding-top: 20px; }
+    #days { font-size: 30px; font-weight: bold; margin: 8px 0; }
+    #error { color: #a00; margin-top: 14px; }
+    .muted { color: #555; font-size: 14px; }
+    details { margin-top: 28px; font-size: 13px; color: #555; }
+    details p { margin: 9px 0; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Raid Catch-Up Calculator</h1>
+  <p>Enter two starting levels to find out how long it takes for both players to reach the same level.</p>
+
+  <form id="form">
+    <label for="player1">Player 1 Level</label>
+    <input id="player1" type="number" value="1" min="1" max="1000" step="1" required>
+
+    <label for="player2">Player 2 Level</label>
+    <input id="player2" type="number" value="30" min="1" max="1000" step="1" required>
+
+    <button type="submit">Calculate</button>
+  </form>
+
+  <p id="error" role="alert" hidden></p>
+  <section id="result" aria-live="polite" hidden>
+    <strong>Time to catch up</strong>
+    <div id="days"></div>
+    <div id="years"></div>
+    <p id="level"></p>
+  </section>
+
+  <details>
+    <summary>Calculation assumptions</summary>
+    <p>Both players start with zero unspent souls and receive the same clan raid rewards. They buy level upgrades as soon as they can afford them.</p>
+    <p>The strongest player determines the raid level. One bonus raid is purchased each day, so daily souls = 200 × raid level.</p>
+    <p>Upgrade cost = 150(3L² + L). Maximum beatable raid = 3L − 4 for player level 2 and above.</p>
+    <p>This finds the first day the players reach the same level, not when they have exactly the same unspent souls.</p>
+  </details>
+</main>
+<script>
+  // Total souls ever spent to reach player level L from level 1.
+  function totalCost(L) {
+    return 150 * L * L * (L - 1);
+  }
+
+  function catchUpTime(player1, player2) {
+    let lower = Math.min(player1, player2);
+    let higher = Math.max(player1, player2);
+    const lowerStart = totalCost(lower);
+    const higherStart = totalCost(higher);
+    let earned = 0;
+    let days = 0;
+
+    if (lower === higher) return { days: 0, level: lower };
+    if (higher < 2) throw new Error('At least one player must be able to defeat Raid 1.');
+
+    // Jump to the next day that could change either player's level.
+    // This produces the same result as day-by-day updates, but runs faster.
+    for (let steps = 0; steps < 1000000; steps++) {
+      const dailySouls = 200 * (3 * higher - 4);
+      const daysUntilLowerReachesHigher = Math.max(1,
+        Math.ceil((totalCost(higher) - lowerStart - earned) / dailySouls));
+      const daysUntilHigherLevelsUp = Math.max(1,
+        Math.ceil((totalCost(higher + 1) - higherStart - earned) / dailySouls));
+      const jump = Math.min(daysUntilLowerReachesHigher, daysUntilHigherLevelsUp);
+
+      days += jump;
+      earned += jump * dailySouls;
+
+      while (totalCost(lower + 1) <= lowerStart + earned) lower++;
+      while (totalCost(higher + 1) <= higherStart + earned) higher++;
+
+      if (lower === higher) return { days, level: lower };
+    }
+    throw new Error('The calculation did not finish for these levels.');
+  }
+
+  document.getElementById('form').addEventListener('submit', function(event) {
+    event.preventDefault();
+    const a = Number(document.getElementById('player1').value);
+    const b = Number(document.getElementById('player2').value);
+    const error = document.getElementById('error');
+    const result = document.getElementById('result');
+    error.hidden = true;
+    result.hidden = true;
+
+    if (!Number.isInteger(a) || !Number.isInteger(b) || a < 1 || b < 1 || a > 1000 || b > 1000) {
+      error.textContent = 'Enter two whole-number levels between 1 and 1000.';
+      error.hidden = false;
+      return;
+    }
+
+    try {
+      const calculation = catchUpTime(a, b);
+      document.getElementById('days').textContent =
+        calculation.days.toLocaleString() + ' days';
+      document.getElementById('years').textContent =
+        'About ' + (calculation.days / 365.25).toFixed(2) + ' years';
+      document.getElementById('level').textContent =
+        'Both players first reach Level ' + calculation.level.toLocaleString() + '.';
+      result.hidden = false;
+    } catch (err) {
+      error.textContent = err.message;
+      error.hidden = false;
+    }
+  });
+
+  // Show the default example immediately.
+  document.getElementById('form').requestSubmit();
+</script>
+</body>
+</html>
